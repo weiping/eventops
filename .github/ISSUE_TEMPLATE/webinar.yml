@@ -1,0 +1,73 @@
+name: Webinar
+description: Plan a webinar. Filing this issue starts the setup pipeline.
+title: "[Webinar] "
+labels: ["event", "event-setup"]
+projects: ["github-apac/12"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Event title
+      placeholder: Shipping faster with AI-assisted development
+    validations:
+      required: true
+  - type: input
+    id: event-date
+    attributes:
+      label: Event date (YYYY-MM-DD)
+      placeholder: "2026-11-12"
+    validations:
+      required: true
+  - type: input
+    id: start-time
+    attributes:
+      label: Start time (local, HH:MM)
+      placeholder: "14:00"
+    validations:
+      required: true
+  - type: dropdown
+    id: region
+    attributes:
+      label: Region
+      options: [JP, KR, APAC]
+    validations:
+      required: true
+  - type: dropdown
+    id: event-type
+    attributes:
+      label: Event type
+      options: [webinar, meetup, exec-roundtable]
+    validations:
+      required: true
+  - type: input
+    id: topic
+    attributes:
+      label: Topic slug
+      description: Lowercase, hyphen separated. Becomes the tail of the campaign name.
+      placeholder: ai-dev
+    validations:
+      required: true
+  - type: textarea
+    id: audience
+    attributes:
+      label: Target audience
+  - type: checkboxes
+    id: channels
+    attributes:
+      label: Promotion channels
+      options:
+        - label: X
+        - label: LinkedIn
+        - label: Newsletter
+        - label: Invitation email
+        - label: Partner
+        - label: Community Slack
+  - type: input
+    id: reference-event-id
+    attributes:
+      label: Reference event ID
+      description: The past event to clone the landing page from.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes

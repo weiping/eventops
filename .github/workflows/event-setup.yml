@@ -1,0 +1,86 @@
+name: Event setup
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: event-setup-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    if: github.event.label.name == 'event-setup'
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ vars.DRY_RUN || 'true' }}
+      EVENT_PLATFORM_URL: ${{ vars.EVENT_PLATFORM_URL }}
+      EVENT_PLATFORM_TOKEN: ${{ secrets.EVENT_PLATFORM_TOKEN }}
+      GH_TOKEN: ${{ secrets.OPS_TOKEN }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Parse the form
+        id: parse
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: printf '%s' "$ISSUE_BODY" | python3 -m scripts.event_form
+
+      - name: Stage the event
+        env:
+          EVENT: ${{ steps.parse.outputs.event }}
+        run: python3 -m scripts.setup_event
+
+      - name: Commit the invitation draft
+        env:
+          EVENT: ${{ steps.parse.outputs.event }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add drafts/
+          git diff --staged --quiet && exit 0
+          git commit -m "Add invitation draft for issue #$ISSUE"
+          if [ "$DRY_RUN" != "true" ]; then git pull --rebase && git push; fi
+
+      - name: File the downstream requests
+        if: env.DRY_RUN != 'true'
+        env:
+          EVENT: ${{ steps.parse.outputs.event }}
+        run: |
+          campaign=$(jq -r .campaign <<<"$EVENT")
+          gh issue create --repo github-apac/email-requests \
+            --title "Send invitation: $campaign" \
+            --body-file "drafts/$campaign/request.md" \
+            --label from-eventops
+          gh project item-add 12 --owner github-apac \
+            --url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ISSUE"
+
+      - name: Report back on the issue
+        if: always()
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" \
+            --remove-label event-setup --add-label event-staged
+
+  notify-failure:
+    needs: setup
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Setup failed. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

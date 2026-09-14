@@ -1,0 +1,50 @@
+name: Slash commands
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  run:
+    if: >-
+      github.event.issue.pull_request == null &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+      (startsWith(github.event.comment.body, '/lead-upload') ||
+       startsWith(github.event.comment.body, '/event-report'))
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ vars.DRY_RUN || 'true' }}
+      EVENT_PLATFORM_URL: ${{ vars.EVENT_PLATFORM_URL }}
+      EVENT_PLATFORM_TOKEN: ${{ secrets.EVENT_PLATFORM_TOKEN }}
+      GH_TOKEN: ${{ secrets.OPS_TOKEN }}
+      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      XDG_CONFIG_HOME: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g @github/copilot
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+
+      - name: Acknowledge
+        run: |
+          gh api -X POST \
+            "repos/$GITHUB_REPOSITORY/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=eyes
+
+      - name: Hand the command to Copilot
+        env:
+          COMMENT: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          command=$(head -n1 <<<"$COMMENT" | tr -d '\r')
+          copilot -p "Run the ${command} procedure for the event in issue #${ISSUE_NUMBER} of ${GITHUB_REPOSITORY}. Follow the matching skill in .github/skills exactly. If a field is missing, stop and report instead of guessing." \
+            --allow-all-tools \
+            --allow-all-paths

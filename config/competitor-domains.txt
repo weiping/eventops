@@ -1,0 +1,4 @@
+# 一行一个域名，井号开头是注释。
+# 这份清单会被 scripts/screening.py 读进来，命中的报名直接判 reject。
+rival.dev
+example-competitor.com

@@ -1,0 +1,29 @@
+name: Hello event
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  greet:
+    if: github.event.label.name == 'event-setup'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse the form
+        id: parse
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: printf '%s' "$ISSUE_BODY" | python3 -m scripts.event_form
+
+      - name: Say what we got
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ steps.parse.outputs.event }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Campaign name: \`$(jq -r .campaign <<<"$EVENT")\`, timezone $(jq -r .timezone <<<"$EVENT")."

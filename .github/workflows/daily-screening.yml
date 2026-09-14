@@ -1,0 +1,59 @@
+name: Daily registrant screening
+on:
+  schedule:
+    - cron: '0 22 * * 0-4'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ vars.DRY_RUN || 'true' }}
+      EVENT_PLATFORM_URL: ${{ vars.EVENT_PLATFORM_URL }}
+      EVENT_PLATFORM_TOKEN: ${{ secrets.EVENT_PLATFORM_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python3 -m scripts.screen_registrants
+
+  close-finished:
+    needs: screen
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ vars.DRY_RUN || 'true' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python3 -m scripts.close_finished_events
+
+  heartbeat:
+    needs: screen
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Complain loudly
+        if: needs.screen.result != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          RESULT: ${{ needs.screen.result }}
+        run: |
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Morning screening did not run ($(date -u +%F))" \
+            --label ops-alert --assignee "${{ vars.OPS_ONCALL }}" \
+            --body "Result: $RESULT. Run: $url"
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"Morning screening $RESULT: $url\"}" "$SLACK_WEBHOOK"
